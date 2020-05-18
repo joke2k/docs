@@ -21,6 +21,7 @@
     - [Deleting Payment Methods](#deleting-payment-methods)
 - [Subscriptions](#subscriptions)
     - [Creating Subscriptions](#creating-subscriptions)
+    - [Retrieving Subscriptions](#retrieving-subscriptions)
     - [Checking Subscription Status](#checking-subscription-status)
     - [Changing Plans](#changing-plans)
     - [Subscription Quantity](#subscription-quantity)
@@ -401,12 +402,46 @@ If you would like to add a subscription to a customer who already has a default 
 
     $user->newSubscription('default', 'premium')->add();
 
+<a name="retrieving-subscriptions"></a>
+### Retrieving Subscriptions
+
+The `Billable` model has a normal One-to-Many relationship with Subscription model and you can use this convenient method to retrieve the subscription by its name:
+
+    $user->subscription('default')
+
+#### Using scopes
+
+These scopes are available to query subscriptions:
+
+    \Laravel\Cashier\Subscription::active();
+    \Laravel\Cashier\Subscription::cancelled();
+    \Laravel\Cashier\Subscription::notCancelled();
+    \Laravel\Cashier\Subscription::ended();
+    \Laravel\Cashier\Subscription::incomplete();
+    \Laravel\Cashier\Subscription::onGracePeriod();
+    \Laravel\Cashier\Subscription::notOnGracePeriod();
+    \Laravel\Cashier\Subscription::onTrial();
+    \Laravel\Cashier\Subscription::notOnTrial();
+    \Laravel\Cashier\Subscription::pastDue();
+    \Laravel\Cashier\Subscription::recurring();
+
+Scopes are available also for `Billable` model:
+
+    $user = Cashier::findBillable($stripeId);
+    $activeSubscriptions = $user->subscriptions()->active()->get();
+
 <a name="checking-subscription-status"></a>
 ### Checking Subscription Status
 
 Once a user is subscribed to your application, you may easily check their subscription status using a variety of convenient methods. First, the `subscribed` method returns `true` if the user has an active subscription, even if the subscription is currently within its trial period:
 
     if ($user->subscribed('default')) {
+        //
+    }
+
+Using `subscribed` gives you a shortcut to avoid to check if an user has a subscription and if `isValid` is `true` (which means that it `isActive()` or `isOnTrial()` or `isInGracePeriod()`):
+
+    if ($user->subscription('default') && $user->subscription('default')->isValid()) {
         //
     }
 
@@ -422,9 +457,9 @@ The `subscribed` method also makes a great candidate for a [route middleware](/d
         return $next($request);
     }
 
-If you would like to determine if a user is still within their trial period, you may use the `onTrial` method. This method can be useful for displaying a warning to the user that they are still on their trial period:
+If you would like to determine if a user is still within their trial period, you may use the `isOnTrial` method. This method can be useful for displaying a warning to the user that they are still on their trial period:
 
-    if ($user->subscription('default')->onTrial()) {
+    if ($user->subscription('default')->isOnTrial()) {
         //
     }
 
@@ -440,29 +475,29 @@ By passing an array to the `subscribedToPlan` method, you may determine if the u
         //
     }
 
-The `recurring` method may be used to determine if the user is currently subscribed and is no longer within their trial period:
+The `isRecurring` method may be used to determine if the user is currently subscribed and is no longer within their trial period:
 
-    if ($user->subscription('default')->recurring()) {
+    if ($user->subscription('default')->isRecurring()) {
         //
     }
 
 #### Cancelled Subscription Status
 
-To determine if the user was once an active subscriber, but has cancelled their subscription, you may use the `cancelled` method:
+To determine if the user was once an active subscriber, but has cancelled their subscription, you may use the `isCancelled` method:
 
-    if ($user->subscription('default')->cancelled()) {
+    if ($user->subscription('default')->isCancelled()) {
         //
     }
 
 You may also determine if a user has cancelled their subscription, but are still on their "grace period" until the subscription fully expires. For example, if a user cancels a subscription on March 5th that was originally scheduled to expire on March 10th, the user is on their "grace period" until March 10th. Note that the `subscribed` method still returns `true` during this time:
 
-    if ($user->subscription('default')->onGracePeriod()) {
+    if ($user->subscription('default')->isOnGracePeriod()) {
         //
     }
 
-To determine if the user has cancelled their subscription and is no longer within their "grace period", you may use the `ended` method:
+To determine if the user has cancelled their subscription and is no longer within their "grace period", you may use the `isEnded` method:
 
-    if ($user->subscription('default')->ended()) {
+    if ($user->subscription('default')->isEnded()) {
         //
     }
 
@@ -480,6 +515,8 @@ Similarly, if a secondary payment action is required when swapping plans the sub
     if ($user->subscription('default')->hasIncompletePayment()) {
         //
     }
+
+Using `hasIncompletePayment()` is a shortcut to check if subscription `isPastDue()` or `isIncomplete()`.
 
 When a subscription has an incomplete payment, you should direct the user to Cashier's payment confirmation page, passing the `latestPayment` identifier. You may use the `latestPayment` method available on subscription instance to retrieve this identifier:
 
@@ -715,9 +752,9 @@ To cancel a subscription, call the `cancel` method on the user's subscription:
 
 When a subscription is cancelled, Cashier will automatically set the `ends_at` column in your database. This column is used to know when the `subscribed` method should begin returning `false`. For example, if a customer cancels a subscription on March 1st, but the subscription was not scheduled to end until March 5th, the `subscribed` method will continue to return `true` until March 5th.
 
-You may determine if a user has cancelled their subscription but are still on their "grace period" using the `onGracePeriod` method:
+You may determine if a user has cancelled their subscription but are still on their "grace period" using the `isOnGracePeriod` method:
 
-    if ($user->subscription('default')->onGracePeriod()) {
+    if ($user->subscription('default')->isOnGracePeriod()) {
         //
     }
 
@@ -762,13 +799,13 @@ The `trialUntil` method allows you to provide a `DateTime` instance to specify w
                 ->trialUntil(Carbon::now()->addDays(10))
                 ->create($paymentMethod);
 
-You may determine if the user is within their trial period using either the `onTrial` method of the user instance, or the `onTrial` method of the subscription instance. The two examples below are identical:
+You may determine if the user is within their trial period using either the `isOnTrial` method of the user instance, or the `isOnTrial` method of the subscription instance. The two examples below are identical:
 
-    if ($user->onTrial('default')) {
+    if ($user->isOnTrial('default')) {
         //
     }
 
-    if ($user->subscription('default')->onTrial()) {
+    if ($user->subscription('default')->isOnTrial()) {
         //
     }
 
@@ -784,15 +821,15 @@ If you would like to offer trial periods without collecting the user's payment m
 
 > {note} Be sure to add a [date mutator](/docs/{{version}}/eloquent-mutators#date-mutators) for `trial_ends_at` to your model definition.
 
-Cashier refers to this type of trial as a "generic trial", since it is not attached to any existing subscription. The `onTrial` method on the `User` instance will return `true` if the current date is not past the value of `trial_ends_at`:
+Cashier refers to this type of trial as a "generic trial", since it is not attached to any existing subscription. The `isOnTrial` method on the `User` instance will return `true` if the current date is not past the value of `trial_ends_at`:
 
-    if ($user->onTrial()) {
+    if ($user->isOnTrial()) {
         // User is within their trial period...
     }
 
-You may also use the `onGenericTrial` method if you wish to know specifically that the user is within their "generic" trial period and has not created an actual subscription yet:
+You may also use the `isOnGenericTrial` method if you wish to know specifically that the user is within their "generic" trial period and has not created an actual subscription yet:
 
-    if ($user->onGenericTrial()) {
+    if ($user->isOnGenericTrial()) {
         // User is within their "generic" trial period...
     }
 
